@@ -23,7 +23,7 @@ void adc_config(void)
 {
     ADC_InitTypeDef ADC_initStructure;
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);
-	RCC_ADCCLKConfig(RCC_PCLK2_Div8);
+	RCC_ADCCLKConfig(RCC_PCLK2_Div8);  // 72/8=9MHz
 	ADC_initStructure.ADC_ContinuousConvMode = DISABLE;		// 单次转换模式，每次由定时器触发开始
 	ADC_initStructure.ADC_DataAlign = ADC_DataAlign_Right;	// 数据右对齐
 	ADC_initStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_T4_CC4; // TIM4_CH4 作为外部触发源

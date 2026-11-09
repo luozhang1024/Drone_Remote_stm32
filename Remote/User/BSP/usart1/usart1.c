@@ -81,7 +81,7 @@ void Usart_SendArray( USART_TypeDef * pUSARTx, uint8_t *array, uint16_t num)
 /*****************  发送字符串 **********************/
 void Usart_SendString( USART_TypeDef * pUSARTx, char *str)
 {
-	unsigned int k=0;
+  unsigned int k=0;
   do 
   {
       Usart_SendByte( pUSARTx, *(str + k) );
@@ -89,8 +89,7 @@ void Usart_SendString( USART_TypeDef * pUSARTx, char *str)
   } while(*(str + k)!='\0');
   
   /* 等待发送完成 */
-  while(USART_GetFlagStatus(pUSARTx,USART_FLAG_TC)==RESET)
-  {}
+  while(USART_GetFlagStatus(pUSARTx,USART_FLAG_TC)==RESET);
 }
 
 /*****************  发送一个16位数 **********************/
