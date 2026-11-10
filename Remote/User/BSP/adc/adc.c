@@ -45,27 +45,52 @@ void adc_config(void)
 	ADC_ExternalTrigConvCmd(ADC1,ENABLE);	                                    // 使能外部触发	
 }
 
+/**
+ * @brief  配置 ADC1 的 DMA 搬运（DMA1_Channel1 → 内存 ADC_value[]）
+ * @note   前提：ADC1 已配置为扫描模式(ScanConvMode=ENABLE)、连续转换，
+ *         规则组序列长度为 4（例如 PA0~PA3 四个通道），
+ *         ADC_value 定义为 u16 ADC_value[4];（元素类型必须是 u16，
+ *         因为下面 DataSize 设的是 HalfWord）
+ */
 void ADC_DMA_Config(void)
 {
-	DMA_InitTypeDef DMA_initStructure;
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
-	DMA_initStructure.DMA_BufferSize = 4;										// 对应 4 路采样结果
-	DMA_initStructure.DMA_DIR = DMA_DIR_PeripheralSRC;	                        // 传输方向：外设到内存
-	DMA_initStructure.DMA_M2M = DMA_M2M_Disable;								
-	DMA_initStructure.DMA_MemoryBaseAddr = (u32)ADC_value;				        
-	DMA_initStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;         // 内存数据宽度为 16 bit
-	DMA_initStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;						// 每搬完一个值后内存地址自增
-	DMA_initStructure.DMA_Mode = DMA_Mode_Circular;								// 循环模式，持续覆盖最新结果
-	DMA_initStructure.DMA_PeripheralBaseAddr = ((u32)&ADC1->DR);	            // 外设地址是 ADC 数据寄存器
-	DMA_initStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;	// 外设数据宽度为 16 bit
-	DMA_initStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;			// 外设地址固定不变
-	DMA_initStructure.DMA_Priority = DMA_Priority_Medium;						
-	DMA_Init(DMA1_Channel1,&DMA_initStructure);
-	DMA_ClearITPendingBit(DMA1_IT_TC1);			    
-	// 一轮 DMA 搬运完成后产生中断，供上层处理最新采样值。
-	DMA_ITConfig(DMA1_Channel1,DMA_IT_TC,ENABLE);	
-	DMA_Cmd(DMA1_Channel1,ENABLE);	
-	ADC_DMACmd(ADC1,ENABLE);
+    DMA_InitTypeDef DMA_initStructure;
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+    /* ---------- 传输数量 ---------- */
+    DMA_initStructure.DMA_BufferSize = 4;
+    /* ---------- 传输方向 ---------- */
+    /* PeripheralSRC = 源是外设(ADC->DR)，目的地是内存。 */
+    DMA_initStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
+    /* 关闭内存到内存模式 */
+    DMA_initStructure.DMA_M2M = DMA_M2M_Disable;
+    /* ---------- 目标地址 ---------- */
+    /* 这里放的是"地址"(32 位地址总线)，不是数据本身。
+     * 缓冲区元素类型要与下面 MemoryDataSize 匹配：HalfWord → u16。 */
+    DMA_initStructure.DMA_MemoryBaseAddr = (u32)ADC_value;
+    /* 每次往内存写 16 bit（HalfWord），因为 ADC 结果就 12/16 位 */
+    DMA_initStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
+    /* 每搬完一个值，内存地址 += 2 字节，这样 4 个结果依次落到 [0][1][2][3] */
+    DMA_initStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    /* 循环模式：一轮 4 个搬完后指针自动回到 ADC_value[0] 重新开始*/
+    DMA_initStructure.DMA_Mode = DMA_Mode_Circular;
+    /* ---------- 源地址 ---------- */
+    DMA_initStructure.DMA_PeripheralBaseAddr = (u32)&ADC1->DR;
+    /* 每次从外设读 16 bit（与 DR 宽度一致，都用 HalfWord） */
+    DMA_initStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
+    /* 外设地址固定不变：始终读 ADC1->DR，不自增 */
+    DMA_initStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    /* 优先级中等，够用 */
+    DMA_initStructure.DMA_Priority = DMA_Priority_Medium;
+    /* ADC1 的 DMA 请求在硬件上固定映射到 DMA1_Channel1，所以这里只能填 Channel1 */
+    DMA_Init(DMA1_Channel1, &DMA_initStructure);
+    /* 清一次 TC 中断标志，防止初始化前遗留的旧标志误触发 */
+    DMA_ClearITPendingBit(DMA1_IT_TC1);
+    /* 一轮 4 个搬完后触发传输完成中断，上层可在中断里标记"数据已刷新" */
+    DMA_ITConfig(DMA1_Channel1, DMA_IT_TC, ENABLE);
+    /* 打开 DMA 通道：DMA 端准备接收请求 */
+    DMA_Cmd(DMA1_Channel1, ENABLE);
+    /* 打开 ADC1 的 DMA 请求：ADC 端每次转换完成就向 DMA 发请求。*/
+    ADC_DMACmd(ADC1, ENABLE);
 }
 
 

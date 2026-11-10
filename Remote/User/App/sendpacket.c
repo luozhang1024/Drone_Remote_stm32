@@ -25,8 +25,6 @@ volatile uint8_t g_radio_last_result;
 
 void analyze_packet(volatile uint16_t *adcData)
 {
-    //固定翼遥控打舵方向数据转为 0 ~ 100
-		//油门转为 0 ~ 1000
     tx.thr = (uint16_t)(((float)(adcData[1]))*0.24420f);
     tx.yaw = (uint8_t)(((float)(adcData[0]))*0.02442f);
     tx.pit = (uint8_t)(((float)(adcData[3]))*0.02442f);

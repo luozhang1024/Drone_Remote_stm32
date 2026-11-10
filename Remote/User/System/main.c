@@ -41,6 +41,9 @@ int main(void)
     Delay_ms(100); 
     while(1)
 	{
+		printf("ADC_Value[0]=%u\n",ADC_value[0]);
+		printf("ADC_Value[1]=%u\n",ADC_value[1]);
+		printf("ADC_Value[2]=%u\n",ADC_value[2]);
 		WaitPairing();
 		key_info();
 		OledDisplayPairStatus();
