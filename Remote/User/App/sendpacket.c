@@ -44,9 +44,9 @@ void data_exchange(uint8_t *dateBuff)
     /* NOT: a zero probe without 0x8B cannot trigger Drone wait_pairing(). */
     memset(dateBuff, 0, TX_PLOAD_WIDTH);
 	//发送新的地址和频点给飞机
-	if(pair.step == STEP1){
+	if(pair.step == STEP1){   //如果此时处于第一阶段，也就是油门已经推到大于900，那么在WaitPairing函数已将ID转换为通讯地址了
 			dateBuff[0] = 0xA8;					//帧头
-			dateBuff[1] = pair.addr[0];		  //5个字节地址    
+			dateBuff[1] = pair.addr[0];		  //5个字节地址 现在只需要将最新的通讯地址放在dataBuff里面（也就是tx_dat)发送给无人机   
 			dateBuff[2] = pair.addr[1];	    //    
 			dateBuff[3] = pair.addr[2];			//	
 			dateBuff[4] = pair.addr[3];			//	
@@ -76,7 +76,7 @@ void data_exchange(uint8_t *dateBuff)
 	}
 }
 
-uint8_t tx_dat[TX_PLOAD_WIDTH] = {0};
+uint8_t tx_dat[TX_PLOAD_WIDTH] = {0};  //定义一个发送数组
 
 
 //DMA通道1中断触发，如果触发，则表明DMA已经将ADC数据搬运到内存数组中，则可以进行发送数据了    
@@ -85,10 +85,10 @@ void DMA1_Channel1_IRQHandler(void)
 	uint8_t ret=0;
 	
 	if(DMA_GetITStatus(DMA1_IT_TC1) == SET){	
-		analyze_packet(ADC_value);		
+		analyze_packet(ADC_value);		//解析ADC采集，DMA搬运到ADC_value数组的摇杆数据到tx结构体
 		data_exchange(tx_dat);//数据装入发送数组
 
-		ret=NRF24L01_TxPacket(tx_dat);//发送数据
+		ret=NRF24L01_TxPacket(tx_dat);//发送数据，得到发送结果ret
 		g_radio_last_result = ret;
 		if(ret == TX_OK){
             ++g_radio_tx_ok;

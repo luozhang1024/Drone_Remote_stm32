@@ -74,7 +74,7 @@ uint8_t NRF24L01_Check(void)
 	return 0;		                                            //NRF24L01在位
 }	 	 
 
-//通过SPI写寄存器
+//通过SPI写寄存器，regaddr(高3位指令+低5位寄存器地址)
 uint8_t NRF24L01_Write_Reg(uint8_t regaddr,uint8_t data)
 {
     uint8_t status;
@@ -82,7 +82,7 @@ uint8_t NRF24L01_Write_Reg(uint8_t regaddr,uint8_t data)
 	uint8_t ret;
     Clr_NRF24L01_CSN();    //使能SPI传输
                                                                 
-    ret=SPI1_RW(regaddr,&status);  //发送寄存器号 
+    ret=SPI1_RW(regaddr,&status);  //
     if(ret!=0)
 	{
 		Set_NRF24L01_CSN();
@@ -184,56 +184,98 @@ uint8_t NRF24L01_Write_Buf(uint8_t regcmd, const uint8_t *pBuf, uint8_t datalen)
 //启动NRF24L01发送一次数据
 //sendBuff:待发送数据首地址
 //返回值:发送完成状况
+/* 发送一包数据，并顺带取走无人机回传的 ACK 载荷(如果有)。返回值为：
+ *   TX_OK(0x20)        : 发射成功，且收到了硬件 ACK
+ *   MAX_TX(0x10)       : 达到最大自动重发次数仍无 ACK，说明飞机没收到或没应答
+ *   NRF24L01_TIMEOUT   : 等 IRQ 等超时，芯片可能卡死或连线异常
+ *   NRF24L01_ERR(0xFF) : SPI 通信失败或参数非法
+ *
+ * 完整流程(ShockBurst 发射时序)：
+ *   1. 清中断标志、清空收发 FIFO —— 保证这次的结果不被上一次的残留干扰
+ *   2. 写 WR_TX_PLOAD，把 11 字节载荷装进 TX FIFO
+ *   3. CE 拉高一个脉冲 -> 芯片自动加前导码/地址/CRC 并发射
+ *   4. 等 IRQ 变低，表示有结果了(TX_DS 或 MAX_RT)
+ *   5. CE 拉低，读 STATUS 判断成败；成功后读走 RX FIFO 里的 ACK 载荷
+ *   6. 清 STATUS 标志，为下一次发射做准备
+ *
+ * 注意：本函数在 DMA1_Channel1 中断里被调用，所以全程用"轮询 + 周期计数超时"，
+ *       不能用任何阻塞延时，也不能依赖 SysTick(优先级可能低于当前中断)。
+ *       另外它内部会调用 NrfRxPacket()，即"发一包 = 顺带收一包"，
+ *       单条射频链路就实现了双向通信。 */
 uint8_t NRF24L01_TxPacket(uint8_t *sendBuff)
 {
     uint8_t state;
     uint32_t start;
-    uint32_t polls = 0;
-    uint32_t limit = (SystemCoreClock / 1000U) * NRF24L01_TX_TIMEOUT_MS;
+    uint32_t polls = 0;                                                 // 轮询计数，作为 CYCCNT 不可用时的兜底超时条件
+    uint32_t limit = (SystemCoreClock / 1000U) * NRF24L01_TX_TIMEOUT_MS; // 把 15ms 换算成内核周期数，作为超时阈值
 
+    /* 发射前先作废旧的接收标志：否则上一次的 ACK 状态会被当成本次的结果 */
     NrfInvalidateRx();
+
+    /* 拉低 CE 进入 Standby-I，保证后面改 FIFO 时芯片不在收发 */
     Clr_NRF24L01_CE();
-    /* Never consume an earlier payload or completion flag. */
     if ((sendBuff == NULL) ||
-        (NRF24L01_Write_Reg(SPI_WRITE_REG + STATUS,
-                          RX_OK | TX_OK | MAX_TX) == NRF24L01_ERR) ||
-        (NRF24L01_Write_Buf(FLUSH_RX, NULL, 0) == NRF24L01_ERR) ||
-        (NRF24L01_Write_Buf(FLUSH_TX, NULL, 0) == NRF24L01_ERR) ||
-        (NRF24L01_Write_Buf(WR_TX_PLOAD, sendBuff,
-                           TX_PLOAD_WIDTH) == NRF24L01_ERR)) {
-        NRF24L01_Recover();
+	//用"写 STATUS = 0x70"这个动作，清掉 RX_DR/TX_DS/MAX_RT 三个中断标志（写 1 清零），并通过返回值是否有错误来判断 SPI 通信是否健康。
+        (NRF24L01_Write_Reg(SPI_WRITE_REG + STATUS,RX_OK | TX_OK | MAX_TX) == NRF24L01_ERR) ||
+        (NRF24L01_Write_Buf(FLUSH_RX, NULL, 0) == NRF24L01_ERR) ||   //丢残留ACK载荷
+        (NRF24L01_Write_Buf(FLUSH_TX, NULL, 0) == NRF24L01_ERR) ||    //丢上次没发出去的旧数据
+        (NRF24L01_Write_Buf(WR_TX_PLOAD, sendBuff,TX_PLOAD_WIDTH) == NRF24L01_ERR)) 
+	{
+        NRF24L01_Recover();                                            
         return NRF24L01_ERR;
     }
-
+    /* 记下发射起始时刻(内核周期数)。CYCCNT 是 32 位且会自然回绕，
+     * 所以下面算差值时必须转成 uint32_t 做无符号减法，编译器会自动处理回绕 */
     start = NRF_DWT_CYCLES;
     Set_NRF24L01_CE();
+
+    /* IRQ 仍为高说明还没有结果，继续等；一旦变低说明 TX_DS 或 MAX_RT 已置位 */
     while (READ_NRF24L01_IRQ() != 0) {
         /* Fail-safe if debug/trace configuration stops CYCCNT. */
+        /* 两个退出条件缺一不可：
+         *   ① 周期计数差超过 15ms —— 正常情况下 1Mbps 发 11 字节远小于这个时间
+         *   ② 轮询 100 万次 —— 万一调试器把 DWT 关掉导致 CYCCNT 不再变化，
+         *      靠这个次数上限也能跳出，绝不至于死循环卡住整个 DMA 中断 */
         if (((uint32_t)(NRF_DWT_CYCLES - start) >= limit) ||
             (++polls >= 1000000UL)) {
             NRF24L01_Recover();
             return NRF24L01_TIMEOUT;
         }
     }
+    /* IRQ 已触发，先拉低 CE 停止收发，再去读状态，避免下一次发射被提前触发 */
     Clr_NRF24L01_CE();
     state = NRF24L01_Read_Reg(STATUS);
-    if ((state == NRF24L01_ERR) || ((state & MAX_TX) != 0U) ||
-        ((state & TX_OK) == 0U)) {
+    /* 判断发射结果，三种情况都算失败：
+     *   state == NRF24L01_ERR : SPI 读失败
+     *   state & MAX_TX        : 重发 10 次仍收不到 ACK —— 飞机没收到/信道或地址不对
+     *   (state & TX_OK) == 0  : 既没报 MAX_RT 也没报 TX_DS，属于异常状态
+     * 注意 MAX_TX 与 TX_OK 是两个不同的位，所以必须先单独判 MAX_TX。 */
+    if ((state == NRF24L01_ERR) || ((state & MAX_TX) != 0U) ||((state & TX_OK) == 0U)) 
+	{
         NRF24L01_Recover();
-        return (state != NRF24L01_ERR && (state & MAX_TX)) ?
-               MAX_TX : NRF24L01_ERR;
+        /* 区分返回值的用意：MAX_TX 是"发得出去但没有应答"，属于链路问题，可以计数观察；
+         * 而 NRF24L01_ERR 是 SPI 层面的硬故障，两者在统计和 LED 提示上应当分别处理 */
+        return (state != NRF24L01_ERR && (state & MAX_TX)) ?MAX_TX : NRF24L01_ERR;
     }
 
     /* Read RX_DR before clearing the module interrupt flags. */
+    /* 步骤 5 续：STATUS 已确认 TX_DS 置位，说明飞机回了 ACK。
+     * 若飞机在 ACK 里带了回传数据(EN_ACK_PAY)，此时数据已在 RX FIFO 中，
+     * 必须在清中断标志之前读走，否则会被下一次的 FLUSH_RX 丢掉 */
     NrfRxPacket();
+    /* 步骤 6：清掉本次产生的中断标志，让 IRQ 引脚恢复高电平供下一轮使用。
+     * 这里清标志失败也按错误处理：标志残留会导致下一包的判断逻辑全部错位 */
     if (NRF24L01_Write_Reg(SPI_WRITE_REG + STATUS,
                            RX_OK | TX_OK | MAX_TX) == NRF24L01_ERR) {
-        NrfInvalidateRx();
+        NrfInvalidateRx();                                              // 本次没读成功，接收状态也要作废
         NRF24L01_Recover();
         return NRF24L01_ERR;
     }
+    /* 确保 SPI 总线回到空闲态(片选为高)，函数返回时总线不留占用 */
     Set_NRF24L01_CSN();
     return TX_OK; /* Hardware ACK success; payload validity is independent. */
+    /* 返回 TX_OK 只代表"射频层拿到了硬件 ACK"，不代表数据内容被应用层接受；
+     * 帧头/帧尾/内容是否合法由 NrfRxPacket() 里的协议检查负责 */
 }
 
 /* Configure PTX mode; always use W_REGISTER for register writes. */
