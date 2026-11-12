@@ -25,6 +25,14 @@ volatile uint8_t g_radio_last_result;
 
 void analyze_packet(volatile uint16_t *adcData)
 {
+    /* ADC1 为 12 位、右对齐，原始读数范围为 0~4095；这里缩放为遥控协议数值，
+     * 不是换算电压或实际角度。DMA 按 PA0、PA1、PA2、PA3 顺序保存到 adcData[0~3]。
+     * 油门：0.24420f 约等于 1000 / 4095，目标量程约 0~1000，需要 uint16_t 存储。
+     * 方向：0.02442f 约等于 100 / 4095，目标量程约 0~100，uint8_t 足以存储。
+     * f 表示 float 常量；转为无符号整数时会截去小数，并非四舍五入。
+     * 注意：现有系数略小于精确比例，4095 实际转换为油门 999、方向 99；
+     *       摇杆中位约为方向 50。这里没有做中位校准、死区或正负方向换算。
+     */
     tx.thr = (uint16_t)(((float)(adcData[1]))*0.24420f);
     tx.yaw = (uint8_t)(((float)(adcData[0]))*0.02442f);
     tx.pit = (uint8_t)(((float)(adcData[3]))*0.02442f);
@@ -49,6 +57,12 @@ void data_exchange(uint8_t *dateBuff)
 	//正常数据通信
 	else if(pair.step == DONE){
 			dateBuff[0] = 0xA8;		//帧头
+            /* 无线载荷按字节打包，不能把 16 位油门直接塞进一个 u8。
+             * STM32F103 按小端存储：低地址是低 8 位，下一地址是高 8 位。
+             * 因此 [1] = thr & 0xFF，[2] = (thr >> 8) & 0xFF；
+             * 接收端应按 thr = [1] | ([2] << 8) 重组（此处说明协议，非接收端代码）。
+             * pit/rol/yaw 各为 uint8_t，分别直接占用 [3]/[4]/[5] 一个字节。
+             */
 			dateBuff[1] = *((u8*)&tx.thr);		//油门低八位
 			dateBuff[2] = *(((u8*)&tx.thr)+1);		//油门高八位
 			dateBuff[3] = tx.pit;		//俯仰舵向

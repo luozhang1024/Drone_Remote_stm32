@@ -5,10 +5,10 @@
 
 typedef struct
 {
-    uint16_t thr;
-    uint8_t pit;
-    uint8_t rol;
-    uint8_t yaw;
+    uint16_t thr;  // 油门约 0~1000，超出 uint8_t 的 0~255；发送时拆为低、高两个字节
+    uint8_t pit;   // 俯仰约 0~100，发送时占一个字节
+    uint8_t rol;   // 横滚约 0~100，发送时占一个字节
+    uint8_t yaw;   // 偏航约 0~100，发送时占一个字节
     uint8_t key;
     
 }RemoteData;
