@@ -1,0 +1,51 @@
+#include "stm32f10x.h"
+#include "systick.h"
+#include "led.h"
+#include "spi.h"
+#include "nrf24l01.h"
+#include "usart1.h"
+#include "timing_trigger.h"
+#include "nvic.h"
+#include "adc.h"
+#include "key.h"
+#include "pair_freq.h"
+#include "sendpacket.h"
+#include "oled.h"
+int main(void)
+{
+    uint8_t radio_attempt;
+    SystemInit();                       //系统初始化    
+    SysTick_init();                     //系统滴答定时器初始化
+    LedInit();                         //状态灯初始化
+    USART_Config();                //串口初始化 
+    printf("串口1准备好了\r\n");
+	get_chip_id();
+    SPI1_Init();
+    NRF24L01_Init();
+    for(radio_attempt = 0; radio_attempt < 3U; ++radio_attempt)
+	{
+	    if(NRF24L01_Check() == 0U) break;
+	    LedBlink(RED);
+		Delay_ms(10);
+    } 
+    if(radio_attempt == 3U) {
+        printf("NRF24L01 unavailable; continuing with bounded TX errors\r\n");
+    }
+    NRF24L01_TX_Mode();
+    KeyInit();
+	ADC_Config();
+	timing_trigger_init();
+	OLED_Init();			
+	OLED_Clear(); 		
+    NVIC_config();                     
+    Delay_ms(100); 
+    while(1)
+	{
+		printf("ADC_Value[0]=%u\n",ADC_value[0]);
+		printf("ADC_Value[1]=%u\n",ADC_value[1]);
+		printf("ADC_Value[2]=%u\n",ADC_value[2]);
+		WaitPairing();  //等待摇杆和UAV对频
+		key_info();
+		OledDisplayPairStatus();
+    }
+}
