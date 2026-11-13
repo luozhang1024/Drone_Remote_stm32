@@ -105,30 +105,61 @@ void DMA1_Channel1_IRQHandler(void)
 }
 
 //接收数据包
+/* 从 nRF24L01 的 RX FIFO 取出一包无人机回传的数据（ACK 载荷）。
+ * 调用时机：NRF24L01_TxPacket() 发射成功（TX_OK 置位）之后调用，
+ *           也可以在别处主动轮询调用。函数不阻塞，没数据就立刻返回。
+ *
+ * 本函数是"尽力而为"的：任何一步条件不满足就静默返回，不报错、不等待，
+ * 因为它是顺带执行的操作，不应该影响主流程（发射）的成败。
+ *
+ * 有效性判定共四关，全部通过才采纳：
+ *   1. 有没有新数据   -> RX_OK 置位 且 RX FIFO 非空
+ *   2. 长度对不对     -> 动态长度必须等于约定的 RX_PLOAD_WIDTH
+ *   3. 读得出来吗     -> SPI 读 FIFO 成功
+ *   4. 帧头帧尾对不对 -> 首字节 0xAA、末字节 0xAC */
 void NrfRxPacket(void)
 {
     uint8_t status, fifo, width;
-    uint8_t packet[RX_PLOAD_WIDTH];
+    uint8_t packet[RX_PLOAD_WIDTH];             // 临时缓冲：先校验通过，再拷进全局变量
+    /* 先作废旧数据：这样即使下面任何一步失败，上层也不会把上一帧的旧内容当成新数据 */
     NrfInvalidateRx();
-    status = NRF24L01_Read_Reg(STATUS);
-    fifo = NRF24L01_Read_Reg(FIFO_STATUS);
-    if ((status == NRF24L01_ERR) || (fifo == NRF24L01_ERR) ||
-        ((status & RX_OK) == 0U) || ((fifo & 1U) != 0U)) {
+    status = NRF24L01_Read_Reg(STATUS);         // STATUS：看 RX_OK(RX_DR) 位
+    fifo = NRF24L01_Read_Reg(FIFO_STATUS);      // FIFO_STATUS：看 RX FIFO 是否为空
+	//状态或者FIFO状态寄存器获取报错，又或者RX_OK标志位未置位，FIFO寄存器空标志置位了，都返回
+    /* 第一关：有没有数据可读。两种情况都会走到这里：
+     *   RX_OK 没置位  -> 没有收到新包
+     *   fifo & 1      -> RX_FIFO_EMPTY(bit0)=1，FIFO 是空的
+     * 两个判断互补：一个是"有新数据"的硬件标志，一个是"读不到东西"的兜底，
+     * 都查一遍可以避免空读。 
+	 * RX_DR 一旦置位就保持，直到主机写 1 清除。它反映的是**“曾经收到过”，不是“现在还有”
+	 * RX_DR 可能被发射流程顺带清掉，但 FIFO 里仍有数据*/
+    if ((status == NRF24L01_ERR) || (fifo == NRF24L01_ERR) ||((status & RX_OK) == 0U) || ((fifo & 1U) != 0U)) 
+	{
         return;
     }
+    /* 第二关：确认这包数据有多长。
+     * 因为使能了动态长度(DYNPD)，必须先用 R_RX_PL_WID 命令问芯片"这包几个字节"，
+     * 不能想当然按固定长度读。长度和约定的 RX_PLOAD_WIDTH 不一致，说明对方协议
+     * 不同或数据已损坏，必须清掉 FIFO 丢弃，否则脏数据会一直卡在 FIFO 里。 */
     if ((NRF24L01_Read_Buf(R_RX_PL_WID, &width, 1) == NRF24L01_ERR) ||
-        (width != RX_PLOAD_WIDTH)) {
-        NRF24L01_Write_Buf(FLUSH_RX, NULL, 0);
+        (width != RX_PLOAD_WIDTH)) 
+	{
+        NRF24L01_Write_Buf(FLUSH_RX, NULL, 0);  // 丢弃这包脏数据
         return;
     }
+    /* 第三关：从 RX FIFO 读出 width 个字节到临时缓冲。
+     * 读失败也要清 FIFO，否则下次读到的还是同一包坏数据，形成死循环。 */
     if (NRF24L01_Read_Buf(RD_RX_PLOAD, packet, width) == NRF24L01_ERR) {
         NRF24L01_Write_Buf(FLUSH_RX, NULL, 0);
         return;
     }
+    /* 第四关：应用层协议校验。帧头 0xAA、帧尾 0xAC 是与无人机约定的边界标志。
+     * 射频层的 CRC 只能保证"位没翻转"，不能保证"这是一帧正确的应用数据"，
+     * 所以还要做这层判断。不通过就静默丢弃（数据此时已出 FIFO，无需再清）。 */
     if ((packet[0] == 0xAA) && (packet[RX_PLOAD_WIDTH - 1] == 0xAC)) {
-        memcpy(rxPacket, packet, sizeof(rxPacket));
-        lastValidAckTick = GetTick();
-        rxPacketStatus = 1;
+        memcpy(rxPacket, packet, sizeof(rxPacket));  // 拷进全局缓冲，供显示函数按字段解析
+        lastValidAckTick = GetTick();                // 记录有效通信时刻，超时后判定为信号丢失
+        rxPacketStatus = 1;                          // 标记"已建立有效通信"，同时触发 OLED 刷新判断
     }
 }
 
