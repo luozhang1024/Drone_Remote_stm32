@@ -289,8 +289,8 @@ void NRF24L01_TX_Mode(void)
 	NRF24L01_Write_Reg(SPI_WRITE_REG+EN_AA,0x01);               //使能通道0的自动应答    
 	NRF24L01_Write_Reg(SPI_WRITE_REG+EN_RXADDR,0x01);           //使能通道0的接收地址  
 	NRF24L01_Write_Reg(SPI_WRITE_REG+RF_CH,pair.freq_channel);  //设置RF通道
-	//重发间隔 = 250us（公式：(ARD+1) × 250us） bit7:4(ARD) 也就是0001 bit3:0(ARC) 1010
-	NRF24L01_Write_Reg(SPI_WRITE_REG+SETUP_RETR,0x1a);  //设置自动重发间隔时间:250us;最大自动重发次数:10次
+	//重发间隔 = 500us（公式：(ARD+1) × 250us） bit7:4(ARD) 也就是0001 bit3:0(ARC) 1010
+	NRF24L01_Write_Reg(SPI_WRITE_REG+SETUP_RETR,0x1a);  //设置自动重发间隔时间:500us;最大自动重发次数:10次
 	NRF24L01_Write_Reg(SPI_WRITE_REG+RF_SETUP,0x07);  //设置射频数据率为1MHZ，发射功率为7dBm
 	NRF24L01_Write_Reg(SPI_WRITE_REG+CONFIG,0x0e);  //配置基本工作模式的参数0000 1110;开启CRC，配置为发射模式,开启所有中断     
 	Set_NRF24L01_CE();                              //CE为高,10us后启动发送

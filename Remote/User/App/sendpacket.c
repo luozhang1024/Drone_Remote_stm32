@@ -141,22 +141,23 @@ void NrfRxPacket(void)
      * 因为使能了动态长度(DYNPD)，必须先用 R_RX_PL_WID 命令问芯片"这包几个字节"，
      * 不能想当然按固定长度读。长度和约定的 RX_PLOAD_WIDTH 不一致，说明对方协议
      * 不同或数据已损坏，必须清掉 FIFO 丢弃，否则脏数据会一直卡在 FIFO 里。 */
-    if ((NRF24L01_Read_Buf(R_RX_PL_WID, &width, 1) == NRF24L01_ERR) ||
-        (width != RX_PLOAD_WIDTH)) 
+    if ((NRF24L01_Read_Buf(R_RX_PL_WID, &width, 1) == NRF24L01_ERR) ||(width != RX_PLOAD_WIDTH)) 
 	{
         NRF24L01_Write_Buf(FLUSH_RX, NULL, 0);  // 丢弃这包脏数据
         return;
     }
     /* 第三关：从 RX FIFO 读出 width 个字节到临时缓冲。
      * 读失败也要清 FIFO，否则下次读到的还是同一包坏数据，形成死循环。 */
-    if (NRF24L01_Read_Buf(RD_RX_PLOAD, packet, width) == NRF24L01_ERR) {
+    if (NRF24L01_Read_Buf(RD_RX_PLOAD, packet, width) == NRF24L01_ERR)
+	{
         NRF24L01_Write_Buf(FLUSH_RX, NULL, 0);
         return;
     }
     /* 第四关：应用层协议校验。帧头 0xAA、帧尾 0xAC 是与无人机约定的边界标志。
      * 射频层的 CRC 只能保证"位没翻转"，不能保证"这是一帧正确的应用数据"，
      * 所以还要做这层判断。不通过就静默丢弃（数据此时已出 FIFO，无需再清）。 */
-    if ((packet[0] == 0xAA) && (packet[RX_PLOAD_WIDTH - 1] == 0xAC)) {
+    if ((packet[0] == 0xAA) && (packet[RX_PLOAD_WIDTH - 1] == 0xAC)) 
+	{
         memcpy(rxPacket, packet, sizeof(rxPacket));  // 拷进全局缓冲，供显示函数按字段解析
         lastValidAckTick = GetTick();                // 记录有效通信时刻，超时后判定为信号丢失
         rxPacketStatus = 1;                          // 标记"已建立有效通信"，同时触发 OLED 刷新判断
