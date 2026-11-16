@@ -416,7 +416,7 @@ typedef struct {
 extern QueueHandle_t g_adc_queue;
 ```
 
-在启动调度器前创建 `g_adc_queue = xQueueCreate(1, sizeof(AdcFrame))` 并检查非 NULL。按键、UI 也各自创建长度为 1 的值拷贝队列。队列复制结构体本身；如果消息是指针，它只复制地址，不接管对象生命期。
+在采样启动前创建 `g_adc_queue = xQueueCreate(1, sizeof(AdcFrame))` 并检查非 NULL。当前源码按野火教程在启动任务 `AppTaskCreate` 中创建队列和业务任务，创建期间用临界区防止业务任务提前执行。按键、UI 也各自创建长度为 1 的值拷贝队列。队列复制结构体本身；如果消息是指针，它只复制地址，不接管对象生命期。
 
 ### 7.2 替换原 DMA ISR，而不是再写一份
 
@@ -477,8 +477,9 @@ void DMA1_Channel1_IRQHandler(void)
 
 ```text
 main：初始化基础硬件、无线、按键、ADC/DMA，配置但不启动 TIM4
-  → AppRtosStart：创建三个长度 1 的值消息队列、RadioTask、慢计数任务
-  → 启动调度器
+  → main 创建 AppTaskCreate 启动任务，启动调度器
+  → AppTaskCreate：进入临界区，创建三个长度 1 的队列、RadioTask、慢计数任务
+  → 退出临界区，允许业务任务运行；启动任务删除自己
   → RadioTask：清 DMA 标志和 NVIC pending，启用 DMA IRQ，启动 TIM4
   → TIM4 触发 ADC → DMA 搬到 ADC_value[4]
   → DMA ISR：清完成标志，复制四路值/时间戳/序号，覆盖采样队列，唤醒任务
@@ -505,6 +506,14 @@ main：初始化基础硬件、无线、按键、ADC/DMA，配置但不启动 TI
 | 断开飞机/开机无 NRF | 失败或超时计数增加，慢计数任务继续；模块缺失仍沿用三次自检后继续、重新接入建议复位的策略 |
 | `g_radio_task` / `g_slow_task` | 检查任务状态与栈水位：RadioTask 等队列时应为 Blocked；记录压力场景最小栈/堆，不能用链接 RAM 余量代替 |
 | GPIO 包围 DMA ISR | 实测 ISR 用时、20 ms 节拍和最坏延迟；该复制方案依赖 ISR 在下一轮 DMA 改写前完成，未实测不能保证无混合帧 |
+
+### 与野火教程对齐的启动写法（2026-11-16）
+
+当前源码改为 `main → BSP_Init → 创建 AppTaskCreate → 启动调度器`。启动任务统一创建队列和业务任务，先退出临界区，再调用 `vTaskDelete(NULL)` 删除自己。任务入口正确声明为 `void AppTaskCreate(void *pvParameters)`，不使用类型转换掩盖无参数函数与任务入口类型不一致的问题。创建 API 按教程使用逐项参数和中文注释，最后一个参数解释为“接收任务句柄的地址”。第 3 关的 `AppRtosStart()` 代码保留为历史最小实验，当前入口以 `User/System/main.c`、`User/RTOS/app_rtos.c` 为准。
+
+启动任务优先级为 1、栈深度为 512 word（2048 字节），只执行一次，删除后由 Idle 回收栈与 TCB；开机创建期间会暂时占用额外 RTOS 堆。临界区内只创建少量内核对象，不做打印、延时或硬件等待。RadioTask 仍在所有队列就绪后才启用 DMA 中断并启动 TIM4。
+
+本次 ARMCC 5.06 update 6 完整 Rebuild：0 错误、1 个原有 NRF 字符串编码警告。Code=14744、RO-data=340、RW-data=284、ZI-data=13612 字节，链接 RAM 合计仍为 13896 字节；动态任务堆占用须上板测量。日志为被忽略的 `Project/Objects/tutorial-style-rebuild.log`。尚未上板检查启动任务退出、Idle 回收和采样行为。
 
 ## 8. 第 5 关：按键和 UI 任务，练习任务管理
 

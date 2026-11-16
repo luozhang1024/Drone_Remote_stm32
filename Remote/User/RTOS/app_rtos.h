@@ -47,5 +47,6 @@ extern const char * volatile g_assert_file;
 extern volatile int g_assert_line;
 extern TaskHandle_t volatile g_overflow_task;
 extern const char * volatile g_overflow_task_name;
-void AppRtosStart(void);
+/* 启动任务：main 创建它，它再创建队列和业务任务，最后删除自己。 */
+void AppTaskCreate(void *pvParameters);
 #endif
