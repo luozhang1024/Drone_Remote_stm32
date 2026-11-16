@@ -23,7 +23,9 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x_it.h"
-#include "usart1.h"
+#include "FreeRTOS.h"
+#include "task.h"
+extern void xPortSysTickHandler(void);
 extern __IO uint32_t g_system_tick_ms;
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
@@ -135,7 +137,11 @@ void DebugMon_Handler(void)
   */
 void SysTick_Handler(void)
 {
-    g_system_tick_ms++;
+    ++g_system_tick_ms;
+    /* Suspended schedulers must also receive ticks. */
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+        xPortSysTickHandler();
+    }
 }
 
 /**

@@ -81,8 +81,8 @@
 #endif
 
 //断言
-#define vAssertCalled(char,int) printf("Error:%s,%d\r\n",char,int)
-#define configASSERT(x) if((x)==0) vAssertCalled(__FILE__,__LINE__)
+void AppAssertFailed(const char *file, int line);
+#define configASSERT(x) do { if (!(x)) AppAssertFailed(__FILE__, __LINE__); } while (0)
 
 /************************************************************************
  *               FreeRTOS基础配置配置选项 
@@ -141,7 +141,7 @@
 #define configTICK_RATE_HZ						  (( TickType_t )1000)
 
 //可使用的最大优先级
-#define configMAX_PRIORITIES					  (32)
+#define configMAX_PRIORITIES 8
 
 //空闲任务使用的堆栈大小
 #define configMINIMAL_STACK_SIZE				((unsigned short)128)
@@ -162,13 +162,13 @@
 #define configUSE_TASK_NOTIFICATIONS    1   
 
 //使用互斥信号量
-#define configUSE_MUTEXES						    0    
+#define configUSE_MUTEXES 1
 
 //使用递归互斥信号量                                            
 #define configUSE_RECURSIVE_MUTEXES			0   
 
 //为1时使用计数信号量
-#define configUSE_COUNTING_SEMAPHORES		0
+#define configUSE_COUNTING_SEMAPHORES 1
 
 /* 设置可以注册的信号量和消息队列个数 */
 #define configQUEUE_REGISTRY_SIZE				10                                 
@@ -215,13 +215,13 @@
 #define configUSE_TICK_HOOK						0           
 
 //使用内存申请失败钩子函数
-#define configUSE_MALLOC_FAILED_HOOK			0 
+#define configUSE_MALLOC_FAILED_HOOK 1
 
 /*
  * 大于0时启用堆栈溢出检测功能，如果使用此功能 
  * 用户必须提供一个栈溢出钩子函数，如果使用的话
  * 此值可以为1或者2，因为有两种栈溢出检测方法 */
-#define configCHECK_FOR_STACK_OVERFLOW			0   
+#define configCHECK_FOR_STACK_OVERFLOW 2
 
 
 /********************************************************************
@@ -236,7 +236,7 @@
  * vTaskList(),
  * vTaskGetRunTimeStats()
 */
-#define configUSE_STATS_FORMATTING_FUNCTIONS	1                       
+#define configUSE_STATS_FORMATTING_FUNCTIONS 0
                                                                         
                                                                         
 /********************************************************************
@@ -274,7 +274,7 @@
 #define INCLUDE_eTaskGetState			           1
 #define INCLUDE_xTimerPendFunctionCall	     0
 //#define INCLUDE_xTaskGetCurrentTaskHandle       1
-//#define INCLUDE_uxTaskGetStackHighWaterMark     0
+#define INCLUDE_uxTaskGetStackHighWaterMark     1
 //#define INCLUDE_xTaskGetIdleTaskHandle          0
 
 

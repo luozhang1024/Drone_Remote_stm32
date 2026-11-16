@@ -19,26 +19,26 @@ void KeyInit(void)
 //按键扫描
 //0：不支持连续按
 //1：支持连续按
+/* Poll periodically (10 ms suggested); debounce press and release without waits. */
 uint8_t KeyScan(uint8_t mode)
 {
-    static uint8_t key_up = 1;
-    
-    if(mode){
-       key_up = 1;
-		}
-    if(key_up&&(key_left==0||key_right==0)){
-        Delay_ms(5);
-        key_up = 0;
-        if(key_left==0)     return 1;
-        if(key_right==0)    return 2;
+    static uint8_t candidate, stable, reported;
+    static uint32_t changed_at;
+    uint8_t raw = (key_left == 0) ? 1U : ((key_right == 0) ? 2U : 0U);
+    uint32_t now = GetTick();
+    if (raw != candidate) {
+        candidate = raw;
+        changed_at = now;
     }
-    else if(key_left==1&&key_right==1){
-        key_up = 1;
+    if ((uint32_t)(now - changed_at) >= 10U) stable = candidate;
+    if (stable == 0U) {
+        reported = 0U;
+    } else if (mode || !reported) {
+        reported = 1U;
+        return stable;
     }
-    return 0;
+    return 0U;
 }
-
-
 
 void key_info(void)
 {

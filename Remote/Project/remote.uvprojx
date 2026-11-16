@@ -338,7 +338,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F10X_MD, USE_STDPERIPH_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..\FreeRTOS\include;..\FreeRTOS\port\MemMang;..\FreeRTOS\port\RVDS\ARM_CM3;..\Libraries\FWlib\inc;..\Libraries\CMSIS;..\User\BSP\adc;..\User\App;..\User\BSP\iic;..\User\BSP\key;..\User\BSP\led;..\User\BSP\nrf24l01;..\User\BSP\oled;..\User\BSP\spi;..\User\BSP\tim;..\User\BSP\usart1;..\User\BSP\iusart3;..\User\System</IncludePath>
+              <IncludePath>..\FreeRTOS\include;..\FreeRTOS\port\MemMang;..\FreeRTOS\port\RVDS\ARM_CM3;..\Libraries\FWlib\inc;..\Libraries\CMSIS;..\User\BSP\adc;..\User\App;..\User\BSP\iic;..\User\BSP\key;..\User\BSP\led;..\User\BSP\nrf24l01;..\User\BSP\oled;..\User\BSP\spi;..\User\BSP\tim;..\User\BSP\usart1;..\User\BSP\usart3;..\User\System;..\User\RTOS</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -696,6 +696,26 @@
               <FileName>usart3.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\BSP\usart3\usart3.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>RTOS App</GroupName>
+          <Files>
+            <File>
+              <FileName>app_rtos.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\RTOS\app_rtos.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\RTOS\app_tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_hooks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\RTOS\app_hooks.c</FilePath>
             </File>
           </Files>
         </Group>

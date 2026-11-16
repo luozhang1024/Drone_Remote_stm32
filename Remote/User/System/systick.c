@@ -1,27 +1,44 @@
 #include "systick.h"
 
-/* 系统滴答定时器 */
-__IO uint32_t g_system_tick_ms=0U;
+#define APP_DWT_CTRL   (*((volatile uint32_t *)0xE0001000UL))
+#define APP_DWT_CYCLES (*((volatile uint32_t *)0xE0001004UL))
+
+__IO uint32_t g_system_tick_ms = 0U;
 
 void SysTick_init(void)
 {
-	if(SysTick_Config(SystemCoreClock/1000U)!=0U) while(1);
+    /* Startup only; the FreeRTOS port configures SysTick at scheduler start. */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    APP_DWT_CTRL |= 1UL; /* Shared with radio timeouts: never reset CYCCNT. */
+    if (SysTick_Config(SystemCoreClock / 1000U) != 0U) {
+        for (;;) { }
+    }
 }
 
 uint32_t GetTick(void)
 {
-	return g_system_tick_ms;
+    return g_system_tick_ms;
 }
-//ms延时
+
+/* Startup only. Tasks use vTaskDelay/vTaskDelayUntil; never call from ISR. */
 void Delay_ms(uint32_t ms)
 {
-	uint32_t start=GetTick();
-	while((GetTick()-start)<ms);
+    uint32_t start = GetTick();
+    while ((uint32_t)(GetTick() - start) < ms) { }
 }
-//us延时
+
 void Delay_us(uint32_t us)
 {
-   uint32_t start=SysTick->VAL;
-   uint32_t tick=us*72;   //72个时钟周期计数1us
-   while(((start-SysTick->VAL)&0x00FFFFFF)<tick);  //防溢出
+    uint32_t cycles_per_us = (SystemCoreClock + 999999U) / 1000000U;
+    uint32_t chunk, start, cycles;
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    APP_DWT_CTRL |= 1UL;
+    /* Bound intervals/multiplication; unsigned subtraction handles wrap. */
+    while (us != 0U) {
+        chunk = (us > 1000U) ? 1000U : us;
+        cycles = chunk * cycles_per_us;
+        start = APP_DWT_CYCLES;
+        while ((uint32_t)(APP_DWT_CYCLES - start) < cycles) { }
+        us -= chunk;
+    }
 }
