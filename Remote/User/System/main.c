@@ -11,17 +11,15 @@
 #include "timing_trigger.h"
 #include "app_rtos.h"
 
-/* 和野火教程一样：main 只创建启动任务，业务任务由它统一创建。 */
+/* main 只创建启动任务，业务任务由它统一创建。 */
 static TaskHandle_t AppTaskCreate_Handle = NULL;
 static void BSP_Init(void);
 
 int main(void)
 {
     BaseType_t xReturn = pdPASS;
-
     /* 第一步：初始化外设，但先不启动 TIM4，避免 DMA 中断来得太早。 */
     BSP_Init();
-
     /* 第二步：创建“负责创建业务任务”的启动任务。
      * 此时调度器还没有启动，创建成功也不会马上执行 AppTaskCreate。 */
     xReturn = xTaskCreate((TaskFunction_t) AppTaskCreate,       /* 任务入口函数 */
@@ -31,23 +29,20 @@ int main(void)
                          (UBaseType_t)    1,                 /* 启动任务优先级 */
                          (TaskHandle_t *) &AppTaskCreate_Handle); /* 接收任务句柄的地址 */
     configASSERT(xReturn == pdPASS);
-
     /* 第三步：启动调度器，AppTaskCreate 从这里之后才有机会运行。 */
     if (pdPASS == xReturn)
     {
         vTaskStartScheduler();
     }
-
     /* 正常不会返回；创建失败或调度器启动失败时保留错误现场。 */
     AppAssertFailed("scheduler start failed", 0);
-    for (;;) { }
+    for (;;) {}
 }
 
 /* 和教程的 BSP_Init 一样，集中放置启动前的硬件初始化。 */
 static void BSP_Init(void)
 {
     uint8_t attempt;
-
     SystemInit();
     SystemCoreClockUpdate();
     NVIC_config(); /* 统一 Group_4；DMA 中断先禁用。 */
