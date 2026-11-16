@@ -20,10 +20,20 @@ void timing_trigger_init(void)
 	TIM_OC4Init(TIM4,&TIM_OCInitStructure);
 	TIM_ARRPreloadConfig(TIM4,ENABLE);							 
 	TIM_OC4PreloadConfig(TIM4,TIM_OCPreload_Enable);			 
-	TIM_Cmd(TIM4,ENABLE);	    
+	TIM_Cmd(TIM4,DISABLE); /* 先不触发 ADC，等队列和调度器准备好。 */
 }
 
 
 
 
 
+
+/* 只能在接收任务和队列就绪后调用，避免中断访问空队列。 */
+void timing_trigger_start(void)
+{
+    /* 先把预装载的分频、比较值装入硬件，第一轮也使用正确周期。 */
+    TIM_GenerateEvent(TIM4, TIM_EventSource_Update);
+    TIM_SetCounter(TIM4, 0U);
+    TIM_ClearFlag(TIM4, TIM_FLAG_Update | TIM_FLAG_CC4);
+    TIM_Cmd(TIM4, ENABLE);
+}

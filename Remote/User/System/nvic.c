@@ -3,12 +3,12 @@
 void NVIC_config(void)
 {
     NVIC_InitTypeDef irq;
-    /* The application's only priority grouping configuration. */
+    /* 四位都用于抢占优先级；整个程序只在这里配置一次分组。 */
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
     irq.NVIC_IRQChannel = DMA1_Channel1_IRQn;
     irq.NVIC_IRQChannelPreemptionPriority = 6;
     irq.NVIC_IRQChannelSubPriority = 0;
-    /* Enable in stage 4 only after the receiving objects/tasks exist. */
+    /* 这里只配置优先级；RadioTask 就绪后再打开 DMA 中断。 */
     irq.NVIC_IRQChannelCmd = DISABLE;
     NVIC_Init(&irq);
 }

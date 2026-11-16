@@ -25,6 +25,8 @@
 #include "stm32f10x_it.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "adc.h"
+#include "app_rtos.h"
 extern void xPortSysTickHandler(void);
 extern __IO uint32_t g_system_tick_ms;
 /** @addtogroup STM32F10x_StdPeriph_Template
@@ -138,7 +140,7 @@ void DebugMon_Handler(void)
 void SysTick_Handler(void)
 {
     ++g_system_tick_ms;
-    /* Suspended schedulers must also receive ticks. */
+    /* 调度开始后就把节拍交给内核；调度器挂起时也要交，内核会暂存。 */
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
         xPortSysTickHandler();
     }
@@ -175,3 +177,22 @@ void SysTick_Handler(void)
 
 
 /******************* (C) COPYRIGHT 2011 STMicroelectronics *****END OF FILE****/
+
+/* DMA 已把四路 ADC 值搬进 ADC_value[]，中断只负责把这一帧交给任务。
+ * 不在中断里做浮点换算、SPI 收发或等待无线 IRQ。 */
+void DMA1_Channel1_IRQHandler(void)
+{
+    BaseType_t higher = pdFALSE;
+    AdcFrame frame;
+    unsigned int i;
+    if (DMA_GetITStatus(DMA1_IT_TC1) != RESET) {
+        DMA_ClearITPendingBit(DMA1_IT_TC1);
+        for (i = 0U; i < 4U; ++i) frame.adc[i] = ADC_value[i];
+        frame.tick = xTaskGetTickCountFromISR();
+        frame.sequence = ++g_adc_sample_count;
+        /* 长度为 1 的队列保留最新帧；这里复制内容，不传数组地址。 */
+        xQueueOverwriteFromISR(g_adc_queue, &frame, &higher);
+        /* 如果唤醒了更高优先级任务，退出中断后立即切换过去处理。 */
+        portYIELD_FROM_ISR(higher);
+    }
+}

@@ -7,9 +7,9 @@ __IO uint32_t g_system_tick_ms = 0U;
 
 void SysTick_init(void)
 {
-    /* Startup only; the FreeRTOS port configures SysTick at scheduler start. */
+    /* 仅在调度前初始化；启动调度器后，SysTick 由内核接管。 */
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    APP_DWT_CTRL |= 1UL; /* Shared with radio timeouts: never reset CYCCNT. */
+    APP_DWT_CTRL |= 1UL; /* 无线超时也用这个计数器，只开启，不能清零。 */
     if (SysTick_Config(SystemCoreClock / 1000U) != 0U) {
         for (;;) { }
     }
@@ -20,7 +20,7 @@ uint32_t GetTick(void)
     return g_system_tick_ms;
 }
 
-/* Startup only. Tasks use vTaskDelay/vTaskDelayUntil; never call from ISR. */
+/* 仅用于开机初始化；任务用 vTaskDelay，禁止在中断里毫秒忙等。 */
 void Delay_ms(uint32_t ms)
 {
     uint32_t start = GetTick();
@@ -33,7 +33,7 @@ void Delay_us(uint32_t us)
     uint32_t chunk, start, cycles;
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     APP_DWT_CTRL |= 1UL;
-    /* Bound intervals/multiplication; unsigned subtraction handles wrap. */
+    /* 每段最多等 1000 微秒，避免乘法溢出；无符号相减可处理计数回绕。 */
     while (us != 0U) {
         chunk = (us > 1000U) ? 1000U : us;
         cycles = chunk * cycles_per_us;

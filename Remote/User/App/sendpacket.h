@@ -15,9 +15,13 @@ typedef struct
 
 
 extern RemoteData tx;
+/* 只允许 RadioTask 调用，输入是一整帧采样副本。 */
+void analyze_packet(const uint16_t *adcData);
+void data_exchange(uint8_t *dateBuff);
+uint8_t NrfGetAckState(uint8_t *unlocked, uint8_t *low_battery);
 void NrfRxPacket(void);
 void NrfInvalidateRx(void);
-/* Stage-0 diagnostics, updated only by the DMA send path. */
+/* 这些诊断计数现在只由 RadioTask 更新，不在 DMA 中断里做无线业务。 */
 extern volatile uint32_t g_radio_tx_ok;
 extern volatile uint32_t g_radio_tx_fail;
 extern volatile uint32_t g_radio_tx_timeout;

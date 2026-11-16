@@ -16,12 +16,14 @@ void AppAssertFailed(const char *file, int line)
 
 void vApplicationMallocFailedHook(void)
 {
+    /* RTOS 堆不足时内核会调用这里。 */
     AppAssertFailed("malloc", 0);
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t task, char *name)
 {
     __disable_irq();
+    /* 记录哪个任务的栈溢出了；name 指向现场，不在错误路径里复制或分配。 */
     g_overflow_task = task;
     g_overflow_task_name = name;
     AppAssertFailed("stack overflow", 0);

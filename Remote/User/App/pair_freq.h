@@ -15,6 +15,8 @@ typedef struct
 	uint8_t freq_channel;
 }Pair;
 
+/* 配对状态只由 RadioTask 修改，其他任务应读取 UI 快照。 */
+extern Pair pair;
 void WaitPairing(void);
 void get_chip_id(void);
 
